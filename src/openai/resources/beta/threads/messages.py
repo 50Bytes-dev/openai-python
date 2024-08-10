@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Union, Iterable, Optional
+from typing import Any, Union, Iterable, Optional
 from typing_extensions import Literal
 
 import httpx
@@ -44,7 +44,7 @@ class Messages(SyncAPIResource):
         *,
         content: Union[str, Iterable[MessageContentPartParam]],
         role: Literal["user", "assistant"],
-        attachments: Optional[Iterable[message_create_params.Attachment]] | NotGiven = NOT_GIVEN,
+        # attachments: Optional[Iterable[message_create_params.Attachment]] | NotGiven = NOT_GIVEN,
         metadata: Optional[object] | NotGiven = NOT_GIVEN,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -52,6 +52,7 @@ class Messages(SyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        **kwargs: Any,
     ) -> Message:
         """
         Create a message.
@@ -91,7 +92,7 @@ class Messages(SyncAPIResource):
                 {
                     "content": content,
                     "role": role,
-                    "attachments": attachments,
+                    # "attachments": attachments,
                     "metadata": metadata,
                 },
                 message_create_params.MessageCreateParams,
@@ -307,7 +308,7 @@ class AsyncMessages(AsyncAPIResource):
         *,
         content: Union[str, Iterable[MessageContentPartParam]],
         role: Literal["user", "assistant"],
-        attachments: Optional[Iterable[message_create_params.Attachment]] | NotGiven = NOT_GIVEN,
+        # attachments: Optional[Iterable[message_create_params.Attachment]] | NotGiven = NOT_GIVEN,
         metadata: Optional[object] | NotGiven = NOT_GIVEN,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -315,6 +316,7 @@ class AsyncMessages(AsyncAPIResource):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
+        **kwargs: Any,
     ) -> Message:
         """
         Create a message.
@@ -354,7 +356,7 @@ class AsyncMessages(AsyncAPIResource):
                 {
                     "content": content,
                     "role": role,
-                    "attachments": attachments,
+                    # "attachments": attachments,
                     "metadata": metadata,
                 },
                 message_create_params.MessageCreateParams,
