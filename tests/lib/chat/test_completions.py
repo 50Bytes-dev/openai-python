@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import os
 import json
-from typing import Any, Callable
+from enum import Enum
+from typing import Any, List, Callable, Optional
 from typing_extensions import Literal, TypeVar
 
 import httpx
 import pytest
 from respx import MockRouter
-from pydantic import BaseModel
+from pydantic import Field, BaseModel
 from inline_snapshot import snapshot
 
 import openai
 from openai import OpenAI, AsyncOpenAI
 from openai._utils import assert_signatures_in_sync
+from openai._compat import PYDANTIC_V2
 
 from ._utils import print_obj
 from ...conftest import base_url
@@ -134,6 +136,113 @@ ParsedChatCompletion[Location](
 
 
 @pytest.mark.respx(base_url=base_url)
+def test_parse_pydantic_model_optional_default(
+    client: OpenAI, respx_mock: MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Location(BaseModel):
+        city: str
+        temperature: float
+        units: Optional[Literal["c", "f"]] = None
+
+    completion = _make_snapshot_request(
+        lambda c: c.beta.chat.completions.parse(
+            model="gpt-4o-2024-08-06",
+            messages=[
+                {
+                    "role": "user",
+                    "content": "What's the weather like in SF?",
+                },
+            ],
+            response_format=Location,
+        ),
+        content_snapshot=snapshot(
+            '{"id": "chatcmpl-9y39Q2jGzWmeEZlm5CoNVOuQzcxP4", "object": "chat.completion", "created": 1724098820, "model": "gpt-4o-2024-08-06", "choices": [{"index": 0, "message": {"role": "assistant", "content": "{\\"city\\":\\"San Francisco\\",\\"temperature\\":62,\\"units\\":\\"f\\"}", "refusal": null}, "logprobs": null, "finish_reason": "stop"}], "usage": {"prompt_tokens": 17, "completion_tokens": 14, "total_tokens": 31}, "system_fingerprint": "fp_2a322c9ffc"}'
+        ),
+        mock_client=client,
+        respx_mock=respx_mock,
+    )
+
+    assert print_obj(completion, monkeypatch) == snapshot(
+        """\
+ParsedChatCompletion[Location](
+    choices=[
+        ParsedChoice[Location](
+            finish_reason='stop',
+            index=0,
+            logprobs=None,
+            message=ParsedChatCompletionMessage[Location](
+                content='{"city":"San Francisco","temperature":62,"units":"f"}',
+                function_call=None,
+                parsed=Location(city='San Francisco', temperature=62.0, units='f'),
+                refusal=None,
+                role='assistant',
+                tool_calls=[]
+            )
+        )
+    ],
+    created=1724098820,
+    id='chatcmpl-9y39Q2jGzWmeEZlm5CoNVOuQzcxP4',
+    model='gpt-4o-2024-08-06',
+    object='chat.completion',
+    service_tier=None,
+    system_fingerprint='fp_2a322c9ffc',
+    usage=CompletionUsage(completion_tokens=14, prompt_tokens=17, total_tokens=31)
+)
+"""
+    )
+
+
+@pytest.mark.respx(base_url=base_url)
+def test_parse_pydantic_model_enum(client: OpenAI, respx_mock: MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    class Color(Enum):
+        """The detected color"""
+
+        RED = "red"
+        BLUE = "blue"
+        GREEN = "green"
+
+    class ColorDetection(BaseModel):
+        color: Color
+        hex_color_code: str = Field(description="The hex color code of the detected color")
+
+    if not PYDANTIC_V2:
+        ColorDetection.update_forward_refs(**locals())  # type: ignore
+
+    completion = _make_snapshot_request(
+        lambda c: c.beta.chat.completions.parse(
+            model="gpt-4o-2024-08-06",
+            messages=[
+                {"role": "user", "content": "What color is a Coke can?"},
+            ],
+            response_format=ColorDetection,
+        ),
+        content_snapshot=snapshot(
+            '{"id": "chatcmpl-9vK4UZVr385F2UgZlP1ShwPn2nFxG", "object": "chat.completion", "created": 1723448878, "model": "gpt-4o-2024-08-06", "choices": [{"index": 0, "message": {"role": "assistant", "content": "{\\"color\\":\\"red\\",\\"hex_color_code\\":\\"#FF0000\\"}", "refusal": null}, "logprobs": null, "finish_reason": "stop"}], "usage": {"prompt_tokens": 18, "completion_tokens": 14, "total_tokens": 32}, "system_fingerprint": "fp_845eaabc1f"}'
+        ),
+        mock_client=client,
+        respx_mock=respx_mock,
+    )
+
+    assert print_obj(completion.choices[0], monkeypatch) == snapshot(
+        """\
+ParsedChoice[ColorDetection](
+    finish_reason='stop',
+    index=0,
+    logprobs=None,
+    message=ParsedChatCompletionMessage[ColorDetection](
+        content='{"color":"red","hex_color_code":"#FF0000"}',
+        function_call=None,
+        parsed=ColorDetection(color=<Color.RED: 'red'>, hex_color_code='#FF0000'),
+        refusal=None,
+        role='assistant',
+        tool_calls=[]
+    )
+)
+"""
+    )
+
+
+@pytest.mark.respx(base_url=base_url)
 def test_parse_pydantic_model_multiple_choices(
     client: OpenAI, respx_mock: MockRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -209,6 +318,63 @@ def test_parse_pydantic_model_multiple_choices(
 
 
 @pytest.mark.respx(base_url=base_url)
+@pytest.mark.skipif(not PYDANTIC_V2, reason="dataclasses only supported in v2")
+def test_parse_pydantic_dataclass(client: OpenAI, respx_mock: MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+    from pydantic.dataclasses import dataclass
+
+    @dataclass
+    class CalendarEvent:
+        name: str
+        date: str
+        participants: List[str]
+
+    completion = _make_snapshot_request(
+        lambda c: c.beta.chat.completions.parse(
+            model="gpt-4o-2024-08-06",
+            messages=[
+                {"role": "system", "content": "Extract the event information."},
+                {"role": "user", "content": "Alice and Bob are going to a science fair on Friday."},
+            ],
+            response_format=CalendarEvent,
+        ),
+        content_snapshot=snapshot(
+            '{"id": "chatcmpl-9wdGqXkJJARAz7rOrLH5u5FBwLjF3", "object": "chat.completion", "created": 1723761008, "model": "gpt-4o-2024-08-06", "choices": [{"index": 0, "message": {"role": "assistant", "content": "{\\"name\\":\\"Science Fair\\",\\"date\\":\\"Friday\\",\\"participants\\":[\\"Alice\\",\\"Bob\\"]}", "refusal": null}, "logprobs": null, "finish_reason": "stop"}], "usage": {"prompt_tokens": 32, "completion_tokens": 17, "total_tokens": 49}, "system_fingerprint": "fp_2a322c9ffc"}'
+        ),
+        mock_client=client,
+        respx_mock=respx_mock,
+    )
+
+    assert print_obj(completion, monkeypatch) == snapshot(
+        """\
+ParsedChatCompletion[CalendarEvent](
+    choices=[
+        ParsedChoice[CalendarEvent](
+            finish_reason='stop',
+            index=0,
+            logprobs=None,
+            message=ParsedChatCompletionMessage[CalendarEvent](
+                content='{"name":"Science Fair","date":"Friday","participants":["Alice","Bob"]}',
+                function_call=None,
+                parsed=CalendarEvent(name='Science Fair', date='Friday', participants=['Alice', 'Bob']),
+                refusal=None,
+                role='assistant',
+                tool_calls=[]
+            )
+        )
+    ],
+    created=1723761008,
+    id='chatcmpl-9wdGqXkJJARAz7rOrLH5u5FBwLjF3',
+    model='gpt-4o-2024-08-06',
+    object='chat.completion',
+    service_tier=None,
+    system_fingerprint='fp_2a322c9ffc',
+    usage=CompletionUsage(completion_tokens=17, prompt_tokens=32, total_tokens=49)
+)
+"""
+    )
+
+
+@pytest.mark.respx(base_url=base_url)
 def test_pydantic_tool_model_all_types(client: OpenAI, respx_mock: MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     completion = _make_snapshot_request(
         lambda c: c.beta.chat.completions.parse(
@@ -268,6 +434,7 @@ at","operator":"<=","value":"2022-05-31"},{"column":"status","operator":"=","val
                                 value=DynamicValue(column_name='expected_delivery_date')
                             )
                         ],
+                        name=None,
                         order_by=<OrderBy.asc: 'asc'>,
                         table_name=<Table.orders: 'orders'>
                     )

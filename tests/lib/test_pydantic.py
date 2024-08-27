@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from enum import Enum
+
+from pydantic import Field, BaseModel
 from inline_snapshot import snapshot
 
 import openai
@@ -59,6 +62,7 @@ def test_most_types() -> None:
                         "Table": {"enum": ["orders", "customers", "products"], "title": "Table", "type": "string"},
                     },
                     "properties": {
+                        "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Name"},
                         "table_name": {"$ref": "#/$defs/Table"},
                         "columns": {
                             "items": {"$ref": "#/$defs/Column"},
@@ -72,7 +76,7 @@ def test_most_types() -> None:
                         },
                         "order_by": {"$ref": "#/$defs/OrderBy"},
                     },
-                    "required": ["table_name", "columns", "conditions", "order_by"],
+                    "required": ["name", "table_name", "columns", "conditions", "order_by"],
                     "title": "Query",
                     "type": "object",
                     "additionalProperties": False,
@@ -88,6 +92,7 @@ def test_most_types() -> None:
                     "title": "Query",
                     "type": "object",
                     "properties": {
+                        "name": {"title": "Name", "type": "string"},
                         "table_name": {"$ref": "#/definitions/Table"},
                         "columns": {"type": "array", "items": {"$ref": "#/definitions/Column"}},
                         "conditions": {
@@ -97,7 +102,7 @@ def test_most_types() -> None:
                         },
                         "order_by": {"$ref": "#/definitions/OrderBy"},
                     },
-                    "required": ["table_name", "columns", "conditions", "order_by"],
+                    "required": ["name", "table_name", "columns", "conditions", "order_by"],
                     "definitions": {
                         "Table": {
                             "title": "Table",
@@ -157,6 +162,75 @@ def test_most_types() -> None:
                             "type": "string",
                         },
                     },
+                    "additionalProperties": False,
+                },
+            }
+        )
+
+
+class Color(Enum):
+    RED = "red"
+    BLUE = "blue"
+    GREEN = "green"
+
+
+class ColorDetection(BaseModel):
+    color: Color = Field(description="The detected color")
+    hex_color_code: str = Field(description="The hex color code of the detected color")
+
+
+def test_enums() -> None:
+    if PYDANTIC_V2:
+        assert openai.pydantic_function_tool(ColorDetection)["function"] == snapshot(
+            {
+                "name": "ColorDetection",
+                "strict": True,
+                "parameters": {
+                    "$defs": {"Color": {"enum": ["red", "blue", "green"], "title": "Color", "type": "string"}},
+                    "properties": {
+                        "color": {
+                            "description": "The detected color",
+                            "enum": ["red", "blue", "green"],
+                            "title": "Color",
+                            "type": "string",
+                        },
+                        "hex_color_code": {
+                            "description": "The hex color code of the detected color",
+                            "title": "Hex Color Code",
+                            "type": "string",
+                        },
+                    },
+                    "required": ["color", "hex_color_code"],
+                    "title": "ColorDetection",
+                    "type": "object",
+                    "additionalProperties": False,
+                },
+            }
+        )
+    else:
+        assert openai.pydantic_function_tool(ColorDetection)["function"] == snapshot(
+            {
+                "name": "ColorDetection",
+                "strict": True,
+                "parameters": {
+                    "properties": {
+                        "color": {
+                            "description": "The detected color",
+                            "title": "Color",
+                            "enum": ["red", "blue", "green"],
+                        },
+                        "hex_color_code": {
+                            "description": "The hex color code of the detected color",
+                            "title": "Hex Color Code",
+                            "type": "string",
+                        },
+                    },
+                    "required": ["color", "hex_color_code"],
+                    "title": "ColorDetection",
+                    "definitions": {
+                        "Color": {"title": "Color", "description": "An enumeration.", "enum": ["red", "blue", "green"]}
+                    },
+                    "type": "object",
                     "additionalProperties": False,
                 },
             }
